@@ -32,40 +32,54 @@ y_train = y_train$label %>% to_categorical()
 
 
 # model
-# define activation
-mish = function(x){
-  x*activation_tanh(activation_softplus(x)) %>% return()
-}
-
 # cnn
-model_cnn = keras_model_sequential() %>% 
+model_cnn = keras_model_sequential() %>%
   layer_conv_2d(filters = 64,
-                kernel_size = c(4, 4),
+                kernel_size = c(2, 2),
                 input_shape = c(28, 28, 1),
-                activation = mish) %>% 
+                padding = 'Same',
+                activation = 'relu') %>%
+  layer_batch_normalization() %>% 
   layer_conv_2d(filters = 64,
-                kernel_size = c(4, 4),
-                activation = mish) %>% 
-  layer_max_pooling_2d(pool_size = c(2, 2)) %>% 
-  layer_dropout(rate = 0.3) %>% 
+                kernel_size = c(2, 2),
+                padding = 'Same',
+                activation = 'relu') %>%
+  layer_batch_normalization() %>% 
+  layer_conv_2d(filters = 64,
+                kernel_size = c(2, 2),
+                padding = 'Same',
+                activation = 'relu') %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_batch_normalization() %>% 
+  layer_dropout(rate = 0.4) %>%
   layer_conv_2d(filters = 128,
                 kernel_size = c(2, 2),
-                activation = mish) %>% 
+                padding = 'Same',
+                activation = 'relu') %>%
+  layer_batch_normalization() %>% 
   layer_conv_2d(filters = 128,
                 kernel_size = c(2, 2),
-                activation = mish) %>% 
-  layer_dropout(rate = 0.4) %>% 
-  layer_flatten() %>% 
+                padding = 'Same',
+                activation = 'relu') %>%
+  layer_batch_normalization() %>% 
+  layer_conv_2d(filters = 128,
+                kernel_size = c(2, 2),
+                padding = 'Same',
+                activation = 'relu') %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_batch_normalization() %>% 
+  layer_flatten() %>%
   layer_dense(units = 512,
-              activation = mish) %>% 
-  layer_dropout(rate = 0.5) %>% 
+              activation = 'relu') %>%
+  layer_batch_normalization() %>% 
+  layer_dropout(rate = 0.5) %>%
   layer_dense(units = 10,
-              activation = 'softmax') %>% 
+              activation = 'softmax') %>%
   # compile
   compile(
-    loss = loss_categorical_crossentropy,
-    optimizer = optimizer_nadam(),
-    metrics = 'accuracy'
+  loss = loss_categorical_crossentropy,
+  optimizer = optimizer_nadam(),
+  metrics = 'accuracy'
   )
 
 # train
@@ -73,13 +87,14 @@ history = model_cnn %>%
   fit(
     x_train,
     y_train,
+    batch_size = 512,
     epochs = 100,
     validation_split = 0.3,
     callbacks = list(
       callback_early_stopping(monitor = 'val_loss',
                               mode = 'min',
                               verbose = 1,
-                              patience = 7),
+                              patience = 10),
       callback_reduce_lr_on_plateau(monitor = 'val_loss',
                                     factor = 0.5,
                                     patience = 3,
