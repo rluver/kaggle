@@ -39,19 +39,26 @@ mish = function(x){
 
 # cnn
 model_cnn = keras_model_sequential() %>% 
-  layer_conv_2d(filters = 32,
-                kernel_size = c(3, 3),
+  layer_conv_2d(filters = 64,
+                kernel_size = c(4, 4),
                 input_shape = c(28, 28, 1),
                 activation = mish) %>% 
   layer_conv_2d(filters = 64,
-                kernel_size = c(3, 3),
+                kernel_size = c(4, 4),
                 activation = mish) %>% 
   layer_max_pooling_2d(pool_size = c(2, 2)) %>% 
   layer_dropout(rate = 0.3) %>% 
-  layer_flatten() %>% 
-  layer_dense(units = 128,
-              activation = mish) %>% 
+  layer_conv_2d(filters = 128,
+                kernel_size = c(2, 2),
+                activation = mish) %>% 
+  layer_conv_2d(filters = 128,
+                kernel_size = c(2, 2),
+                activation = mish) %>% 
   layer_dropout(rate = 0.4) %>% 
+  layer_flatten() %>% 
+  layer_dense(units = 512,
+              activation = mish) %>% 
+  layer_dropout(rate = 0.5) %>% 
   layer_dense(units = 10,
               activation = 'softmax') %>% 
   # compile
@@ -72,7 +79,12 @@ history = model_cnn %>%
       callback_early_stopping(monitor = 'val_loss',
                               mode = 'min',
                               verbose = 1,
-                              patience = 7)
+                              patience = 7),
+      callback_reduce_lr_on_plateau(monitor = 'val_loss',
+                                    factor = 0.5,
+                                    patience = 3,
+                                    verbose = 1,
+                                    min_lr = 0.000001)
     )
   )
 
