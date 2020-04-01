@@ -22,7 +22,7 @@ getPreprocessedData = function(train, test){
   
   c(x_train, x_segment) %<-% list(mapply(as.matrix, encoded_train[seq(1, nrow(train) * 2, 2)]) %>% t() %>% list(),
                                   mapply(as.matrix, encoded_train[seq(2, nrow(train) * 2, 2)]) %>% t() %>% list())
-  y_train = mapply(list, train$target)
+  y_train = train$target
   
   c(x_test, x_segment_test) %<-% list(mapply(as.matrix, encoded_test[seq(1, nrow(test) * 2, 2)]) %>% t() %>% list(),
                                       mapply(as.matrix, encoded_test[seq(2, nrow(test) * 2, 2)]) %>% t() %>% list())
@@ -58,14 +58,16 @@ model = keras_bert$load_trained_model_from_checkpoint(
 
 
 # load data
-c(x_train, x_segment, y_train) %<-% dt_data("D:/nlp-getting-started/train.csv")
-c(x_test, x_segment_test) %<-% dt_data_test("D:/nlp-getting-started/test.csv")
-submission = fread("D:/nlp-getting-started/sample_submission.csv", header = T)
+c(submission, test, train) %<-% mapply(fread, list.files("D:/nlp-getting-started", full.names = T),
+                                       SIMPLIFY = T, USE.NAMES = F)
+
+# get preprocessd data
+c(x_train, x_segment, y_train, x_test, x_segment_test) %<-% getPreprocessedData(train, test)
 
 
 
 # cal decay and warmup step
-c(decay_steps, warmup_steps) %<-% keras_bert$calc_train_steps(do.call(cbind, y_train) %>% t() %>% length(),
+c(decay_steps, warmup_steps) %<-% keras_bert$calc_train_steps(y_train %>% length(),
                                                               batch_size = batch_size,
                                                               epochs = epochs)
 
@@ -89,9 +91,8 @@ model %>% compile(keras_bert$AdamWarmup(decay_steps = decay_steps,
                   loss = "binary_crossentropy",
                   metrics = "accuracy")
 
-model %>% fit(c(do.call(cbind, x_train) %>% t() %>% list(), 
-                do.call(cbind, x_segment) %>% t() %>% list()),
-              target,
+model %>% fit(c(x_train, x_segment),
+              y_train,
               epochs = epochs,
               batch_size = batch_size,
               validation_split = 0.3)
@@ -100,7 +101,6 @@ model %>% fit(c(do.call(cbind, x_train) %>% t() %>% list(),
 
 
 # submission
-submission$target = ifelse(model %>% predict(c(do.call(cbind, x_test) %>% t() %>% list(),
-                                               do.call(cbind, x_segment_test) %>% t() %>% list())) < 0.5,
+submission$target = ifelse(model %>% predict(c(x_test, x_segment_test)) < 0.5,
                            0, 1)
 fwrite(submission, 'd:/bert.csv', row.names = F)
