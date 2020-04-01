@@ -15,42 +15,19 @@ Sys.setenv(TF_KERAS = 1)
 
 # user function
 # tokenize text
-tokenize_fun_train = function(dataset) {
-  c(indices, target, segments) %<-% list(list(),list(),list())
-  for ( i in 1:nrow(dataset)) {
-    c(indices_tok, segments_tok) %<-% tokenizer$encode(dataset[[DATA_COLUMN]][i], 
-                                                       max_len=seq_length)
-    indices = indices %>% append(list(as.matrix(indices_tok)))
-    target = target %>% append(dataset[[LABEL_COLUMN]][i])
-    segments = segments %>% append(list(as.matrix(segments_tok)))
-  }
-  return(list(indices,segments, target))
-}
-
-tokenize_fun_test = function(dataset) {
-  c(indices, segments) %<-% list(list(),list())
-  for ( i in 1:nrow(dataset)) {
-    c(indices_tok, segments_tok) %<-% tokenizer$encode(dataset[[DATA_COLUMN]][i], 
-                                                       max_len = seq_length)
-    indices = indices %>% append(list(as.matrix(indices_tok)))
-    segments = segments %>% append(list(as.matrix(segments_tok)))
-  }
+getPreprocessedData = function(train, test){
   
-  return(list(indices, segments))
-}
-
-# read data
-dt_data_train = function(dir){
-  data = data.table::fread(dir)
-  c(x_train, x_segment, y_train) %<-% tokenize_fun(data)
-  return(list(x_train, x_segment, y_train))
-}  
-
-dt_data_test = function(dir){
-  data = data.table::fread(dir)
-  c(x_test, x_segment_test) %<-% tokenize_fun_test(data)
- 
-  return(list(x_test, x_segment_test))
+  encoded_train = mapply(tokenizer$encode, max_len = seq_length, train$text)
+  encoded_test = mapply(tokenizer$encode, max_len = seq_length, test$text)
+  
+  c(x_train, x_segment) %<-% list(mapply(as.matrix, encoded_train[seq(1, nrow(train) * 2, 2)]) %>% t() %>% list(),
+                                  mapply(as.matrix, encoded_train[seq(2, nrow(train) * 2, 2)]) %>% t() %>% list())
+  y_train = mapply(list, train$target)
+  
+  c(x_test, x_segment_test) %<-% list(mapply(as.matrix, encoded_test[seq(1, nrow(test) * 2, 2)]) %>% t() %>% list(),
+                                      mapply(as.matrix, encoded_test[seq(2, nrow(test) * 2, 2)]) %>% t() %>% list())
+  
+  return(list(x_train, x_segment, y_train, x_test, x_segment_test))
 }
   
 
@@ -61,9 +38,6 @@ seq_length = 50L
 batch_size = 70
 epochs = 2
 learning_rate = 1e-4
-
-# user param
-c(DATA_COLUMN, LABEL_COLUMN) %<-% c("text", "target")
 
 
 
