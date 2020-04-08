@@ -78,19 +78,24 @@ c(decay_steps, warmup_steps) %<-% keras_bert$calc_train_steps(y_train %>% length
 model = keras_model(inputs = list(input1 = get_layer(model, name = "Input-Token")$input, 
                                   input2 = get_layer(model, name = "Input-Segment")$input), 
                     outputs = get_layer(model, name = "NSP-Dense")$output %>% 
+                      ayer_batch_normalization() %>% 
+                      layer_dropout(0.4) %>% 
+                      layer_dense(units = 128,
+                                  activation = 'selu') %>% 
+                      layer_batch_normalization() %>% 
+                      layer_dropout(0.4) %>% 
                       layer_dense(units = 1L,
                                   activation = "sigmoid",
                                   kernel_initializer = initializer_truncated_normal(stddev = 0.02),
-                                  name = "output"))
+                                  name = "output")) %>% 
+  # compile
+  compile(keras_bert$AdamWarmup(decay_steps = decay_steps,
+                                warmup_steps = warmup_steps,
+                                lr = learning_rate),
+          loss = "binary_crossentropy",
+          metrics = "accuracy")
 
-
-# compile and train
-model %>% compile(keras_bert$AdamWarmup(decay_steps = decay_steps,
-                                        warmup_steps = warmup_steps,
-                                        lr = learning_rate),
-                  loss = "binary_crossentropy",
-                  metrics = "accuracy")
-
+# train
 model %>% fit(c(x_train, x_segment),
               y_train,
               epochs = epochs,
