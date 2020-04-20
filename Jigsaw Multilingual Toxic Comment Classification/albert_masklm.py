@@ -24,11 +24,13 @@ train = pd.concat(
     )
 
 
+# parameter
+MAX_LEN = 192
+
 
 # user define function
 # cleansing
 def cleansing(self):
-    
     # punctuation
     punct = [',', '.', '"', ':', ')', '(', '-', '!', '?', '|', ';', "'", '$', '&', '/', '[', ']', '>', '%', '=', '#', '*', '+', '\\', '•',  '~', '@', '£',
  '·', '_', '{', '}', '©', '^', '®', '`',  '<', '→', '°', '€', '™', '›',  '♥', '←', '×', '§', '″', '′', 'Â', '█', '½', 'à', '…', '\xa0', '\t',
@@ -119,7 +121,46 @@ def cleansing(self):
     return self
 
 
+# encode
+def encoding(text, tokenizer, maxlen = MAX_LEN):
+    enc_dic = tokenizer.batch_encode_plus(
+        text,
+        return_attention_masks = False,
+        return_token_type_ids = False,
+        pad_to_max_length = True,
+        max_length = maxlen
+    )
+    
+    return np.array(enc_dic['input_ids'])
+
+
+# cleansing
+train.comment_text = train.comment_text.apply(lambda x: cleansing(x))
+valid.comment_text = valid.comment_text.apply(lambda x: cleansing(x))
+test.content = test.content.apply(lambda x: cleansing(x))
+
+x_train = encoding(train.comment_text.astype(str).values, tokenizer, maxlen = MAX_LEN)
+x_valid = encoding(valid.comment_text.astype(str).values, tokenizer, maxlen = MAX_LEN)
+x_test = encoding(test.content.astype(str).values, tokenizer, maxlen = MAX_LEN)
+
 
 # model
 MODEL = 'albert-base-v2'
 tokenizer = AlbertTokenizer.from_pretrained(MODEL)
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+model = AlbertForMaskedLM.from_pretrained(MODEL)
+
+# build model
+def build_model(model, max_len = MAX_LEN):
+    input_word_ids = Input(shape = (max_len, ), dtype = tf.int32, name = 'input_word_ids')
+    sequence_output = model(input_word_ids)[0]
+    class_token = sequence_output[:, 0, :]
+    layer = Dropout(rate = 0.3)(class_token)
+    output = Dense(units = 1,
+                   activation = 'sigmoid')(layer)
+    
+    model = Model(inputs = input_word_ids,
+                  outputs = output)
+    model.compile(Nadam(lr = 3e-5), loss = 'binary_crossentropy', metrics = [AUC()])
+    
+    return model
