@@ -6,6 +6,9 @@ import pandas as pd
 import re
 import torch
 from transformers import *
+import tensorflow as tf
+from tensorflow.keras import backend as K
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, LearningRateScheduler
 
 
 # data load
@@ -26,6 +29,8 @@ train = pd.concat(
 
 # parameter
 MAX_LEN = 192
+BATCH_SIZE = 64
+AUTO = tf.data.experimental.AUTOTUNE
 
 
 # user define function
@@ -140,8 +145,33 @@ valid.comment_text = valid.comment_text.apply(lambda x: cleansing(x))
 test.content = test.content.apply(lambda x: cleansing(x))
 
 x_train = encoding(train.comment_text.astype(str).values, tokenizer, maxlen = MAX_LEN)
+y_train = train.toxic.values
 x_valid = encoding(valid.comment_text.astype(str).values, tokenizer, maxlen = MAX_LEN)
+y_valid = valid.toxic.values
 x_test = encoding(test.content.astype(str).values, tokenizer, maxlen = MAX_LEN)
+
+train_dataset = (
+    tf.data.Dataset
+    .from_tensor_slices((x_train, y_train))
+    .repeat()
+    .shuffle(2048)
+    .batch(BATCH_SIZE)
+    .prefetch(AUTO)
+    )
+
+valid_dataset = (
+    tf.data.Dataset
+    .from_tensor_slices((x_valid, y_valid))
+    .batch(BATCH_SIZE)
+    .cache()
+    .prefetch(AUTO)
+    )
+
+test_dataset = (
+    tf.data.Dataset
+    .from_tensor_slices(x_test)
+    .batch(BATCH_SIZE)
+    )
 
 
 # model
@@ -151,6 +181,21 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model = AlbertForMaskedLM.from_pretrained(MODEL)
 
 # build model
+# loss
+class RocAucEvaluation(Callback):
+    def __init__(self, validation_data = (), interval = 1):
+        super(Callback, self).__init__()
+        
+        self.interval = interval
+        self.x_val, self.y_val = validatino_data
+        
+    def epochEnd(self, epoch, logs = {}):
+        if epoch % self.interval == 0:
+            y_pred = self.model.predict(self.x_val)
+            score = roc_auc_score(self.y_val, y_pred)
+            print("\n ROC-AUC - epoch: {:d} - score: {:.6f}".format(epoch+1, score))
+
+# model
 def build_model(model, max_len = MAX_LEN):
     input_word_ids = Input(shape = (max_len, ), dtype = tf.int32, name = 'input_word_ids')
     sequence_output = model(input_word_ids)[0]
@@ -164,3 +209,28 @@ def build_model(model, max_len = MAX_LEN):
     model.compile(Nadam(lr = 3e-5), loss = 'binary_crossentropy', metrics = [AUC()])
     
     return model
+
+# focal loss
+def focal_loss(gamma = 2., alpha = .2):
+    def focal_loss_fixed(y_true, y_pred):
+        pt1 = tf.where(tf.equal(y_true , 1), y_pred, tf.ones_like(y_pred))
+        pt0 = tf.where(tf.equal(y_true , 0), y_pred, tf.zeros_like(y_pred))
+            
+        return -K.mean(alpha * K.pow(1. - pt1, gamma) * K.log(pt1)) - K.mean((1 - alpha) * K.pow(pt0, gamma) * K.log(1. - pt0))
+        
+    return focal_loss_fixed
+
+# callback
+def callback():
+    cb = []
+    
+    reduceLROnPlat = ReduceLOOnPlateau(
+        monitor = 'val_loss',
+        factor = 0.5,
+        patience = 3,
+        mode = 'auto',
+        epsilon = 1e-4,
+        cooldown = 1,
+        min_lr = 1e-6)
+    
+    cb.append(reduceLROnPlat)
